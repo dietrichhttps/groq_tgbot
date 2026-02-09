@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  chatgpt-bot:
+    build: .
+    container_name: chatgpt-telegram-bot
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-3.5-turbo}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - chatgpt-network
+    # Optional: uncomment to add volumes for logs
+    # volumes:
+    #   - ./logs:/app/logs
+
+networks:
+  chatgpt-network:
+    driver: bridge
