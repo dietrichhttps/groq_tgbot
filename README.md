@@ -2,79 +2,85 @@
 
 Telegram bot that integrates with ChatGPT to generate text responses based on user requests.
 
-## Возможности
+## Features
 
-- Команды `/start` и `/help`
-- Интеграция с ChatGPT API
-- Сохранение истории диалогов
-- Использование контекста предыдущих сообщений для более качественных ответов
-- Кнопка "Новый запрос" для сброса контекста
-- Обработка ошибок и исключений
+- `/start` and `/help` commands
+- ChatGPT API integration
+- Dialog history management
+- Context awareness using previous messages for better responses
+- "New request" button to reset context
+- Error handling and exception management
 
-## Требования
+## Requirements
 
 - Python 3.8+
-- Telegram Bot Token (получить от BotFather)
-- OpenAI API Key (получить на https://platform.openai.com/api-keys)
+- Telegram Bot Token (get from BotFather)
+- OpenAI API Key (get from https://platform.openai.com/api-keys)
 
-## Установка
+## Installation
 
-1. **Клонируйте репозиторий:**
+1. **Clone the repository:**
 ```bash
 git clone <repository_url>
 cd chatgpt_tgbot
 ```
 
-2. **Установите зависимости:**
+2. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **Создайте файл `.env`:**
+3. **Create `.env` file:**
 ```bash
 cp .env.example .env
 ```
 
-4. **Отредактируйте `.env` и добавьте свои API ключи:**
+4. **Edit `.env` and add your API keys:**
 ```
 TELEGRAM_BOT_TOKEN=your_token_here
 OPENAI_API_KEY=your_key_here
 ```
 
-## Запуск
+## Running the Bot
 
 ```bash
 python bot.py
 ```
 
-## Команды бота
+## Bot Commands
 
-- `/start` - Начать новый диалог (очищает историю сообщений)
-- `/help` - Получить справку по использованию бота
-- `/history` - Показать историю текущего диалога
-- `Новый запрос` - Кнопка для сброса контекста диалога
+- `/start` - Start a new dialog (clears message history)
+- `/help` - Get usage instructions
+- `/history` - Show current dialog history
+- "New request" - Button to reset dialog context
 
-## Как это работает
+## How It Works
 
-1. Пользователь отправляет сообщение боту
-2. Бот сохраняет сообщение в истории диалога
-3. История отправляется в ChatGPT API
-4. Ответ от ChatGPT отправляется пользователю
-5. Ответ также сохраняется в истории для контекста
+1. User sends a message to the bot
+2. Bot saves the message in dialog history
+3. History is sent to ChatGPT API
+4. ChatGPT response is sent back to the user
+5. Response is saved in history for context
 
-## Структура проекта
+## Project Structure
 
 ```
 chatgpt_tgbot/
-├── bot.py              # Основной файл бота
-├── requirements.txt    # Зависимости Python
-├── .env.example       # Шаблон для переменных окружения
-└── README.md          # Этот файл
+├── bot.py                # Main bot entry point
+├── config.py             # Configuration management
+├── chatgpt_client.py     # ChatGPT API client
+├── dialogue_manager.py   # Dialog history management
+├── utils.py              # Utility functions
+├── test_bot.py           # Unit tests
+├── requirements.txt      # Python dependencies
+├── .env.example          # Environment variables template
+├── docker-compose.yml    # Docker compose configuration
+└── README.md             # This file
 ```
 
-## Обработка ошибок
+## Error Handling
 
-Бот обрабатывает следующие типы ошибок:
-- Ошибки аутентификации OpenAI
-- Превышение ограничения на количество запросов
-- Прочие ошибки сети
+The bot handles the following error types:
+- OpenAI authentication errors
+- Rate limit exceeded errors
+- Network connectivity errors
