@@ -1,7 +1,4 @@
-import os
 import logging
-from typing import Dict, List
-from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -12,55 +9,23 @@ from telegram.ext import (
 )
 import openai
 
-# Load environment variables
-load_dotenv()
+from config import Config, setup_logging
+from dialogue_manager import DialogueManager
+from chatgpt_client import ChatGPTClient
 
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Setup logging
+logger = setup_logging()
 
-# Get API keys from environment
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# Validate configuration
+try:
+    Config.validate()
+except ValueError as e:
+    logger.error(f"Configuration error: {str(e)}")
+    raise
 
-# Configure OpenAI
-openai.api_key = OPENAI_API_KEY
-
-
-class DialogueManager:
-    """Manages conversation history for each user"""
-    
-    def __init__(self):
-        self.conversations: Dict[int, List[Dict]] = {}
-    
-    def add_message(self, user_id: int, role: str, content: str):
-        """Add a message to the conversation history"""
-        if user_id not in self.conversations:
-            self.conversations[user_id] = []
-        self.conversations[user_id].append({
-            "role": role,
-            "content": content
-        })
-    
-    def get_history(self, user_id: int) -> List[Dict]:
-        """Get the full conversation history for a user"""
-        return self.conversations.get(user_id, [])
-    
-    def clear_history(self, user_id: int):
-        """Clear the conversation history for a user"""
-        if user_id in self.conversations:
-            del self.conversations[user_id]
-    
-    def has_history(self, user_id: int) -> bool:
-        """Check if user has any conversation history"""
-        return user_id in self.conversations and len(self.conversations[user_id]) > 0
-
-
-# Initialize dialogue manager
+# Initialize dialogue manager and ChatGPT client
 dialogue_manager = DialogueManager()
+chatgpt_client = ChatGPTClient()
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -135,17 +100,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Get conversation history
         messages = dialogue_manager.get_history(user_id)
         
-        # Call OpenAI API
-        logger.info(f"Sending request to OpenAI for user {user_id}")
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=2000,
-            temperature=0.7
-        )
-        
-        # Extract assistant response
-        assistant_message = response.choices[0].message.content
+        # Call ChatGPT
+        logger.info(f"Sending request to ChatGPT for user {user_id}")
+        assistant_message = await chatgpt_client.get_response(messages)
         
         # Add assistant response to history
         dialogue_manager.add_message(user_id, "assistant", assistant_message)
@@ -173,16 +130,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def main() -> None:
     """Start the bot"""
-    if not TELEGRAM_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
-        return
-    
-    if not OPENAI_API_KEY:
-        logger.error("OPENAI_API_KEY not found in environment variables")
-        return
-    
     # Create the Application
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    application = Application.builder().token(Config.TELEGRAM_BOT_TOKEN).build()
     
     # Add command handlers
     application.add_handler(CommandHandler("start", start_command))
