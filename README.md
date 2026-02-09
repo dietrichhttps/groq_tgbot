@@ -1,6 +1,6 @@
 # ChatGPT Telegram Bot
 
-Телеграм-бот, который интегрируется с ChatGPT для генерации текстовых ответов по запросу пользователя.
+Telegram bot that integrates with ChatGPT to generate text responses based on user requests.
 
 ## Возможности
 
