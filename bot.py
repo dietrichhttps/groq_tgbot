@@ -1,150 +1,143 @@
-import logging
+#!/usr/bin/env python3
+"""
+ChatGPT Telegram Bot
+
+Простой бот для общения с ChatGPT через Telegram
+"""
+
+import os
+import asyncio
+from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-)
-import openai
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from openai import OpenAI
 
-from config import Config, setup_logging
-from dialogue_manager import DialogueManager
-from chatgpt_client import ChatGPTClient
-from utils import MessageFormatter, ValidationUtils
+# Загрузка переменных окружения
+load_dotenv()
 
-# Setup logging
-logger = setup_logging()
+# Получение токенов
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-# Validate configuration
-try:
-    Config.validate()
-except ValueError as e:
-    logger.error(f"Configuration error: {str(e)}")
-    raise
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    print("Ошибка: Проверьте файл .env и наличие токенов")
+    exit(1)
 
-# Initialize dialogue manager and ChatGPT client
-dialogue_manager = DialogueManager()
-chatgpt_client = ChatGPTClient()
+# Инициализация OpenAI клиента
+client = OpenAI(api_key=OPENAI_API_KEY)
 
+# Хранение истории диалогов
+dialog_history = {}
+
+def reset_context(user_id):
+    """Сброс контекста для пользователя"""
+    dialog_history[user_id] = []
+
+def get_history(user_id):
+    """Получение истории диалога для пользователя"""
+    return dialog_history.get(user_id, [])
+
+def add_to_history(user_id, role, content):
+    """Добавление сообщения в историю"""
+    if user_id not in dialog_history:
+        dialog_history[user_id] = []
+    dialog_history[user_id].append({"role": role, "content": content})
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /start command"""
+    """Обработчик команды /start"""
     user_id = update.effective_user.id
     
-    # Clear conversation history
-    dialogue_manager.clear_history(user_id)
+    # Сброс контекста
+    reset_context(user_id)
     
-    keyboard = [
-        ["Новый запрос"]
-    ]
+    # Создание клавиатуры
+    keyboard = [["Новый запрос"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     await update.message.reply_text(
-        MessageFormatter.format_welcome(),
+        "Привет! Я ChatGPT бот. Отправь мне сообщение, и я отвечу с помощью ChatGPT.",
         reply_markup=reply_markup
     )
 
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /help command"""
-    await update.message.reply_text(MessageFormatter.format_help())
-
-
-async def help_command_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /history command"""
-    user_id = update.effective_user.id
-    messages = dialogue_manager.get_history(user_id)
-    
-    history_text = MessageFormatter.format_history(messages)
-    await update.message.reply_text(history_text)
-
-
-async def reset_context(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle 'Новый запрос' button click"""
-    user_id = update.effective_user.id
-    dialogue_manager.clear_history(user_id)
-    
-    await update.message.reply_text(
-        "Контекст диалога очищен! Теперь я слушаю ваш новый запрос."
+    """Обработчик команды /help"""
+    help_text = (
+        "📋 Доступные команды:\n"
+        "/start - Начать новый диалог (сбросить историю)\n"
+        "/help - Показать эту справку\n"
+        "\n💬 Просто отправь мне любое текстовое сообщение, и я отвечу с помощью ChatGPT!"
     )
-
+    await update.message.reply_text(help_text)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle regular text messages and get response from ChatGPT"""
+    """Обработчик текстовых сообщений"""
     user_id = update.effective_user.id
     user_message = update.message.text
     
-    # Check if this is the reset button
+    # Проверка на кнопку "Новый запрос"
     if user_message == "Новый запрос":
-        await reset_context(update, context)
-        return
-    
-    # Validate message
-    if not ValidationUtils.is_valid_message(user_message):
-        error = ValidationUtils.get_validation_error(user_message)
-        await update.message.reply_text(error)
+        reset_context(user_id)
+        await update.message.reply_text("✅ Контекст диалога очищен! Теперь я слушаю ваш новый запрос.")
         return
     
     try:
-        # Show typing indicator
+        # Показываем индикатор набора
         await update.message.chat.send_action("typing")
         
-        # Add user message to history
-        dialogue_manager.add_message(user_id, "user", user_message)
+        # Добавляем сообщение пользователя в историю
+        add_to_history(user_id, "user", user_message)
         
-        # Get conversation history
-        messages = dialogue_manager.get_history(user_id)
+        # Получаем историю для отправки в OpenAI
+        history = get_history(user_id)
         
-        # Call ChatGPT
-        logger.info(f"Sending request to ChatGPT for user {user_id}")
-        assistant_message = await chatgpt_client.get_response(messages)
+        # Отправляем запрос в OpenAI
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=history,
+            max_tokens=1000,
+            temperature=0.7
+        )
         
-        # Add assistant response to history
-        dialogue_manager.add_message(user_id, "assistant", assistant_message)
+        # Получаем ответ от ChatGPT
+        assistant_message = response.choices[0].message.content
         
-        # Send response to user
+        # Добавляем ответ ассистента в историю
+        add_to_history(user_id, "assistant", assistant_message)
+        
+        # Отправляем ответ пользователю
         await update.message.reply_text(assistant_message)
         
-        logger.info(f"Response sent to user {user_id}")
-        
-    except openai.AuthenticationError:
-        error_msg = MessageFormatter.format_error("auth_error")
-        logger.error(error_msg)
-        await update.message.reply_text(error_msg)
-    
-    except openai.RateLimitError:
-        error_msg = MessageFormatter.format_error("rate_limit")
-        logger.error("Rate limit exceeded")
-        await update.message.reply_text(error_msg)
-    
     except Exception as e:
-        error_msg = MessageFormatter.format_error("general_error", str(e))
-        logger.error(f"Error processing message: {str(e)}")
-        await update.message.reply_text(error_msg)
+        print(f"Ошибка при обработке сообщения: {e}")
+        await update.message.reply_text("❌ Произошла ошибка. Попробуйте еще раз.")
 
-
-def main() -> None:
-    """Start bot"""
-    # Create the Application
-    application = Application.builder().token(Config.TELEGRAM_BOT_TOKEN).build()
+def main():
+    """Основная функция запуска бота"""
     
-    # Add command handlers
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("history", help_command_history))
+    async def run_bot():
+        # Создание приложения
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        
+        # Добавление обработчиков
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        # Запуск бота
+        print("Запуск бота...")
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling()
+        
+        # Бесконечный цикл
+        while True:
+            await asyncio.sleep(1)
     
-    # Add message handler for text messages
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # Start the Bot
-    logger.info("Starting bot...")
-    logger.info(f"Using model: {Config.OPENAI_MODEL}")
-    
-    # Run the bot
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
+    # Запуск
+    try:
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        print("Остановка бота...")
 
 if __name__ == '__main__':
     main()
