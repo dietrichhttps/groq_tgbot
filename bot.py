@@ -1,49 +1,30 @@
 #!/usr/bin/env python3
 """
-ChatGPT Telegram Bot
+ChatGPT Telegram Bot с Groq LLM
 
-Простой бот для общения с ChatGPT через Telegram с поддержкой прокси
+Супербыстрый бот с использованием бесплатной Groq API
 """
 
 import os
 import asyncio
-import httpx
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import OpenAI
+from groq import Groq
 
 # Загрузка переменных окружения
 load_dotenv()
 
 # Получение токенов
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_PROXY = os.getenv('OPENAI_PROXY')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+if not TELEGRAM_TOKEN or not GROQ_API_KEY:
     print("Ошибка: Проверьте файл .env и наличие токенов")
     exit(1)
 
-# Настройка HTTP клиента с прокси (если указан)
-http_client = None
-if OPENAI_PROXY:
-    print(f"Используем прокси: {OPENAI_PROXY}")
-    http_client = httpx.Client(
-        proxy=OPENAI_PROXY,
-        timeout=30.0
-    )
-else:
-    print("Прокси не настроен, используем прямое соединение")
-
-# Инициализация OpenAI клиента с прокси
-if http_client:
-    client = OpenAI(
-        api_key=OPENAI_API_KEY,
-        http_client=http_client
-    )
-else:
-    client = OpenAI(api_key=OPENAI_API_KEY)
+# Инициализация Groq клиента
+client = Groq(api_key=GROQ_API_KEY)
 
 # Хранение истории диалогов
 dialog_history = {}
@@ -74,7 +55,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     await update.message.reply_text(
-        "Привет! Я ChatGPT бот. Отправь мне сообщение, и я отвечу с помощью ChatGPT.",
+        "🚀 Привет! Я супербыстрый AI бот на Groq Llama 3. Отправь мне сообщение, и я отвечу мгновенно!",
         reply_markup=reply_markup
     )
 
@@ -83,8 +64,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     help_text = (
         "📋 Доступные команды:\n"
         "/start - Начать новый диалог (сбросить историю)\n"
-        "/help - Показать эту справку\n"
-        "\n💬 Просто отправь мне любое текстовое сообщение, и я отвечу с помощью ChatGPT!"
+        "/help - Показать эту справку\n\n"
+        "⚡ Мощь: Groq Llama 3.1 8B\n"
+        "🔥 Скорость: 275 токенов/секунду\n"
+        "💰 Цена: Бесплатно!\n\n"
+        "💬 Просто отправь мне любое текстовое сообщение!"
     )
     await update.message.reply_text(help_text)
 
@@ -96,7 +80,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Проверка на кнопку "Новый запрос"
     if user_message == "Новый запрос":
         reset_context(user_id)
-        await update.message.reply_text("✅ Контекст диалога очищен! Теперь я слушаю ваш новый запрос.")
+        await update.message.reply_text("✅ Контекст диалога очищен! Готов к новым вопросам.")
         return
     
     try:
@@ -106,18 +90,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Добавляем сообщение пользователя в историю
         add_to_history(user_id, "user", user_message)
         
-        # Получаем историю для отправки в OpenAI
+        # Получаем историю для отправки в Groq
         history = get_history(user_id)
         
-        # Отправляем запрос в OpenAI
+        # Отправляем запрос в Groq
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="llama-3.1-8b-instant",  # Самая быстрая модель
             messages=history,
             max_tokens=1000,
-            temperature=0.7
+            temperature=0.7,
+            stream=False
         )
         
-        # Получаем ответ от ChatGPT
+        # Получаем ответ от Groq
         assistant_message = response.choices[0].message.content
         
         # Добавляем ответ ассистента в историю
@@ -128,7 +113,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
     except Exception as e:
         print(f"Ошибка при обработке сообщения: {e}")
-        await update.message.reply_text("❌ Произошла ошибка. Попробуйте еще раз.")
+        error_messages = {
+            "rate_limit": "⏰ Превышен лимит запросов к Groq. Попробуйте позже.",
+            "authentication": "❌ Ошибка аутентификации Groq. Проверьте API ключ.",
+            "timeout": "🕐 Время ожидания истекло. Попробуйте еще раз.",
+        }
+        
+        # Определяем тип ошибки по ключевым словам
+        error_msg = "❌ Произошла ошибка. Попробуйте еще раз."
+        if "rate" in str(e).lower():
+            error_msg = error_messages["rate_limit"]
+        elif "auth" in str(e).lower() or "unauthorized" in str(e).lower():
+            error_msg = error_messages["authentication"]
+        elif "timeout" in str(e).lower() or "connection" in str(e).lower():
+            error_msg = error_messages["timeout"]
+        
+        await update.message.reply_text(error_msg)
 
 def main():
     """Основная функция запуска бота"""
@@ -143,7 +143,9 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         # Запуск бота
-        print("Запуск бота...")
+        print("🚀 Запуск бота с Groq Llama 3.1...")
+        print("⚡ Модель: llama-3.1-8b-instant")
+        print("💰 API: Бесплатный Groq")
         await application.initialize()
         await application.start()
         await application.updater.start_polling()
